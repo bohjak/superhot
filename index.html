@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en-US">
+  <head>
+    <meta charset="utf-8" />
+    <title>{{TITLE}}</title>
+  </head>
+  <body>
+    <script type="text/javascript">
+      let src = new EventSource("sse");
+
+      src.onmessage = () => {
+        window.location.reload();
+      };
+
+      src.onerror = () => {
+        console.debug("[HOTRELOAD] error: server connection lost");
+      };
+    </script>
+  </body>
+</html>
