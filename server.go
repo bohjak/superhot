@@ -55,8 +55,8 @@ func (b *broker) sendReload() {
 	b.connectionsMutex.RLock()
 	defer b.connectionsMutex.RUnlock()
 
-	// data is mandatory
-	msgBytes := []byte("event: reload\ndata: reload\n\n")
+	// data is mandatory and named events are broken
+	msgBytes := []byte("data: reload\n\n")
 	for client, connection := range b.connections {
 		_, err := connection.writer.Write(msgBytes)
 		if err != nil {
