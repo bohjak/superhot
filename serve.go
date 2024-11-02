@@ -1,9 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strconv"
+	"strings"
 	"sync"
 )
 
@@ -73,9 +77,51 @@ func (b *broker) handleReloadReq(res http.ResponseWriter, req *http.Request) {
 	b.sendReload()
 }
 
+type modifyingResponseWriter struct {
+	http.ResponseWriter
+	buf *bytes.Buffer
+}
+
+func (m *modifyingResponseWriter) Write(b []byte) (int, error) {
+	return m.buf.Write(b)
+}
+
+func modifyHTMLMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mrw := &modifyingResponseWriter{
+			ResponseWriter: w,
+			buf:            &bytes.Buffer{},
+		}
+
+		next.ServeHTTP(mrw, r)
+
+		contentType := w.Header().Get("Content-Type")
+		if strings.HasPrefix(contentType, "text/html") {
+			// Modify the HTML content here
+			modifiedContent := strings.Replace(mrw.buf.String(), "</head>", "<script type=\"text/javascript\">new EventSource(\"sse\").onmessage=()=>window.location.reload()</script></head>", 1)
+
+			// Write the modified content back to the original ResponseWriter
+			w.Header().Set("Content-Length", strconv.Itoa(len(modifiedContent)))
+			w.Write([]byte(modifiedContent))
+		} else {
+			// For non-HTML content, write the original response
+			w.Write(mrw.buf.Bytes())
+		}
+	})
+}
+
 func main() {
+	dir := "."
+	port := "3000"
+	if len(os.Args) >= 2 {
+		dir = os.Args[1]
+	}
+	if len(os.Args) >= 3 {
+		port = os.Args[2]
+	}
+
 	// serve the current directory at '/'
-	fs := http.FileServer(http.Dir("."))
+	fs := http.FileServer(http.Dir(dir))
 	http.Handle("/", fs)
 
 	broker := broker{connections: map[string]*connection{}}
@@ -84,7 +130,7 @@ func main() {
 	// endpoint for triggering sending the reload event
 	http.HandleFunc("/sse/reload", broker.handleReloadReq)
 
-	fmt.Println("starting on http://localhost:3000")
-	fmt.Println("send requests to http://localhost:3000/sse/reload to trigger reloads")
-	log.Fatal(http.ListenAndServe(":3000", nil))
+	fmt.Printf("starting on http://localhost:%s\n", port)
+	fmt.Printf("send requests to http://localhost:%s/sse/reload to trigger reloads", port)
+	log.Fatal(http.ListenAndServe(fmt.Sprintf(":%s", port), nil))
 }
